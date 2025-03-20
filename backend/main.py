@@ -5,8 +5,14 @@ from backend.db import get_db, create_db
 from backend.llm import generate_sql_with_llm
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_db()  # Ініціалізація БД при старті
+    yield  # Тут можна додати код завершення роботи перед зупинкою сервера
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -16,11 +22,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ініціалізація БД при старті
-@app.on_event("startup")
-async def startup():
-    await create_db()
-
 class QueryRequest(BaseModel):
     text: str  # Поле "text" для запиту
 
@@ -28,10 +29,7 @@ class QueryRequest(BaseModel):
 async def query_db(request: QueryRequest, db: AsyncSession = Depends(get_db)) -> dict:
     try:
         # Генерація SQL через LLM
-        sql_query, data = await generate_sql_with_llm(request.text, db)
-
-        # Логування SQL-запиту
-        logging.info(f"Executing SQL: {sql_query}")
+        data = await generate_sql_with_llm(request.text, db)  # Тільки один результат
 
         # Логування та повернення результату
         if not data:
